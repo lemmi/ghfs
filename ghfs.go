@@ -1,9 +1,9 @@
 package ghfs
 
 import (
-	"bytes"
 	"errors"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	g "gopkg.in/libgit2/git2go.v22"
+	g "gopkg.in/libgit2/git2go.v23"
 )
 
 type ghfsFileInfo struct {
@@ -109,8 +109,11 @@ func (d *ghfsDir) Stat() (os.FileInfo, error) {
 }
 
 type ghfsFile struct {
-	fi os.FileInfo
-	r  *bytes.Reader
+	fi   os.FileInfo
+	tree *g.Tree
+	oid  *g.Oid
+	r    *g.OdbReadStream
+	off  int64
 }
 
 // Implement http.File on a git blob
@@ -120,13 +123,33 @@ func NewFile(tree *g.Tree, entry *g.TreeEntry) (http.File, error) {
 		return nil, err
 	}
 	defer blob.Free()
-	return &ghfsFile{fi: NewFileInfoFromBlob(entry.Name, blob), r: bytes.NewReader(blob.Contents())}, nil
+	return &ghfsFile{
+		fi:   NewFileInfoFromBlob(entry.Name, blob),
+		tree: tree,
+	}, nil
 }
 
 func (f *ghfsFile) Read(buf []byte) (int, error) {
-	return f.r.Read(buf)
+	if f.r == nil {
+		f.off = 0
+
+		odb, err := f.tree.Owner().Odb()
+		if err != nil {
+			return 0, err
+		}
+		defer odb.Free()
+
+		f.r, err = odb.NewReadStream(f.oid)
+		if err != nil {
+			return 0, err
+		}
+	}
+	n, err := f.r.Read(buf)
+	f.off += int64(n)
+	return n, err
 }
 func (f *ghfsFile) Close() error {
+	f.r.Free()
 	f.r = nil
 	return nil
 }
@@ -134,7 +157,32 @@ func (f *ghfsFile) Readdir(count int) ([]os.FileInfo, error) {
 	return nil, os.ErrInvalid
 }
 func (f *ghfsFile) Seek(offset int64, whence int) (int64, error) {
-	return f.r.Seek(offset, whence)
+	// TODO optimize special case offset=0, whence=2
+	var noff int64
+	switch whence {
+	case os.SEEK_SET:
+		noff = offset
+	case os.SEEK_CUR:
+		noff = f.off + offset
+	case os.SEEK_END:
+		noff = f.fi.Size() + offset
+	default:
+		return 0, errors.New("Invalid argument for whence")
+	}
+	switch {
+	case noff < 0:
+		return 0, errors.New("Invalid offset")
+	case noff < f.off:
+		f.r.Free()
+		f.r = nil
+		f.off = 0
+		return io.CopyN(ioutil.Discard, f, noff)
+	case noff >= f.off:
+		_, err := io.CopyN(ioutil.Discard, f, noff-f.off)
+		return f.off, err
+	default:
+		return 0, errors.New("Unreachable")
+	}
 }
 func (f *ghfsFile) Stat() (os.FileInfo, error) {
 	return f.fi, nil
