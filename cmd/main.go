@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/lemmi/ghfs"
-	g "gopkg.in/libgit2/git2go.v22"
+	g "github.com/lemmi/git"
 )
 
 func POE(err error, prefix ...interface{}) {
@@ -17,7 +17,28 @@ func POE(err error, prefix ...interface{}) {
 	}
 }
 
+type gitroot struct {
+	path, branchname string
+}
+
+func (gr gitroot) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	path, err := filepath.Abs(gr.path)
+	POE(err, "Filepath")
+
+	repo, err := g.OpenRepository(path)
+	POE(err, "OpenRepository")
+
+	commit, err := repo.GetCommitOfBranch(gr.branchname)
+	POE(err, "LookupBranch")
+
+	log.Print("On branch ", gr.branchname)
+	log.Print("Serving tree of commit ", commit.Id)
+
+	http.FileServer(ghfs.FromCommit(commit)).ServeHTTP(w, r)
+}
+
 func main() {
+	log.SetFlags(log.Flags() | log.Lshortfile)
 	path := "."
 	branchname := "master"
 	if len(os.Args) > 1 {
@@ -26,27 +47,6 @@ func main() {
 	if len(os.Args) > 2 {
 		branchname = os.Args[2]
 	}
-	path, err := filepath.Abs(path)
-	POE(err, "Filepath")
 
-	r, err := g.OpenRepository(path)
-	POE(err, "OpenRepository")
-	defer r.Free()
-
-	b, err := r.LookupBranch(branchname, g.BranchLocal)
-	POE(err, "LookupBranch")
-	defer b.Free()
-
-	log.Print("On branch ", branchname)
-
-	commit, err := r.LookupCommit(b.Target())
-	POE(err, "LookupCommit")
-	defer commit.Free()
-	log.Print("Serving tree of commit ", commit.Id())
-
-	tree, err := commit.Tree()
-	POE(err, "Tree from commit")
-	defer tree.Free()
-
-	http.ListenAndServe(":8080", http.FileServer(ghfs.FromTree(tree)))
+	http.ListenAndServe(":8008", gitroot{path, branchname})
 }
