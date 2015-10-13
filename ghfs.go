@@ -169,10 +169,18 @@ func (f *ghfsFile) Stat() (os.FileInfo, error) {
 // Implement a http.Filesystem for a git Tree
 type ghfs struct {
 	commit *g.Commit
+	tree   *g.Tree
 }
 
-func FromCommit(commit *g.Commit) http.FileSystem {
-	return ghfs{commit}
+// Serve git tree from commit. Optionally from subtree
+func FromCommit(commit *g.Commit, tree ...*g.Tree) http.FileSystem {
+	var t *g.Tree
+	if len(tree) == 0 {
+		t = &commit.Tree
+	} else {
+		t = tree[0]
+	}
+	return ghfs{commit, t}
 }
 
 func (fs ghfs) Open(name string) (http.File, error) {
@@ -181,10 +189,10 @@ func (fs ghfs) Open(name string) (http.File, error) {
 		name = name[1:]
 	}
 	if name == "" {
-		return NewDir(&fs.commit.Tree, rootFileInfo{})
+		return NewDir(fs.tree, rootFileInfo{})
 	} else {
 		var err error
-		entry, err = fs.commit.Tree.GetTreeEntryByPath(name)
+		entry, err = fs.tree.GetTreeEntryByPath(name)
 		if err != nil {
 			return nil, err
 		}
@@ -194,7 +202,7 @@ func (fs ghfs) Open(name string) (http.File, error) {
 
 	switch entry.Type {
 	case g.ObjectTree:
-		stree, err := fs.commit.Tree.SubTree(name)
+		stree, err := fs.tree.SubTree(name)
 		if err != nil {
 			return nil, err
 		}
