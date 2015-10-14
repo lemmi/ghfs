@@ -35,7 +35,7 @@ func (d *ghfsDir) Close() error {
 }
 func (d *ghfsDir) Readdir(count int) ([]os.FileInfo, error) {
 	ret := []os.FileInfo{}
-	for c := 0; c < count; c++ {
+	for c := 0; count <= 0 || count > c; c++ {
 		if !d.scanner.Scan() {
 			break
 		}
