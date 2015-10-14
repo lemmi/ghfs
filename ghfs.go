@@ -193,7 +193,10 @@ func (fs ghfs) Open(name string) (http.File, error) {
 	} else {
 		var err error
 		entry, err = fs.tree.GetTreeEntryByPath(name)
-		if err != nil {
+		switch {
+		case err == g.ErrNotExist:
+			return nil, os.ErrNotExist
+		case err != nil:
 			return nil, err
 		}
 	}
