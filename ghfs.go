@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	g "github.com/lemmi/git"
+	g "github.com/gogits/git"
 )
 
 type ghfsDir struct {

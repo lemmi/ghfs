@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	g "github.com/gogits/git"
 	"github.com/lemmi/ghfs"
-	g "github.com/lemmi/git"
 )
 
 func POE(err error, prefix ...interface{}) {
