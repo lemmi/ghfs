@@ -1,7 +1,7 @@
 package ghfs
 
 import (
-	"errors"
+	"github.com/pkg/errors"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -23,7 +23,7 @@ type ghfsDir struct {
 func NewDir(tree *g.Tree, fi os.FileInfo) (http.File, error) {
 	scanner, err := tree.Scanner()
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "Cannot open scanner.")
 	}
 	return &ghfsDir{tree: tree, fi: fi, scanner: scanner}, nil
 }
@@ -101,7 +101,7 @@ func (f *ghfsFile) Read(buf []byte) (int, error) {
 	if f.rc == nil {
 		f.rc, err = f.entry.Blob().Data()
 		if err != nil {
-			return 0, err
+			return 0, errors.Wrap(err, "Cannot get Data()")
 		}
 	}
 
@@ -197,7 +197,7 @@ func (fs ghfs) Open(name string) (http.File, error) {
 		case err == g.ErrNotExist:
 			return nil, os.ErrNotExist
 		case err != nil:
-			return nil, err
+			return nil, errors.Wrap(err, "Cannot get entry.")
 		}
 	}
 
