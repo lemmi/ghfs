@@ -41,10 +41,7 @@ func (d *ghfsDir) Readdir(count int) ([]os.FileInfo, error) {
 		}
 		ret = append(ret, d.scanner.TreeEntry())
 	}
-	if err := d.scanner.Err(); err != nil {
-		return ret, err
-	}
-	return ret, nil
+	return ret, d.scanner.Err()
 }
 func (d *ghfsDir) Seek(int64, int) (int64, error) {
 	return 0, syscall.EISDIR
@@ -128,16 +125,16 @@ func (f *ghfsFile) Readdir(count int) ([]os.FileInfo, error) {
 func (f *ghfsFile) Seek(offset int64, whence int) (int64, error) {
 	var noff int64
 
-	if whence == os.SEEK_CUR && f.atEnd {
-		whence = os.SEEK_END
+	if whence == io.SeekCurrent && f.atEnd {
+		whence = io.SeekEnd
 	}
 
 	switch whence {
-	case os.SEEK_SET:
+	case io.SeekStart:
 		noff = offset
-	case os.SEEK_CUR:
+	case io.SeekCurrent:
 		noff = f.off + offset
-	case os.SEEK_END:
+	case io.SeekEnd:
 		if offset == 0 {
 			f.atEnd = true
 			return f.entry.Size(), nil
@@ -185,9 +182,7 @@ func FromCommit(commit *g.Commit, tree ...*g.Tree) http.FileSystem {
 
 func (fs ghfs) Open(name string) (http.File, error) {
 	var entry *g.TreeEntry
-	if strings.HasPrefix(name, "/") {
-		name = name[1:]
-	}
+	name = strings.TrimPrefix(name, "/")
 	if name == "" {
 		return NewDir(fs.tree, rootFileInfo{})
 	} else {
